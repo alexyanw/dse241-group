@@ -32,7 +32,7 @@
         <div class="col-md-6">
           <div class="row">
             <div class="chart-wrapper col-md-12">
-              <h2> metals of country/sport</h2>
+              <h2> Sport per country</h2>
               <div class="form-inline">
                 <label for="filter-year-begin">year begin</label>
                 <select id="filter-year-begin" class="form-control"> </select>
@@ -43,8 +43,8 @@
 							<div id='barchart-country-sport'></div>
             </div>
             <div class="chart-wrapper col-md-12">
-              <h2> metals of year/country</h2>
-							<div id='barchart-year-country'></div>
+              <h2> medals per country</h2>
+							<div id='barchart-country-medal'></div>
             </div>
           </div>
         </div>
@@ -102,27 +102,19 @@ function update_year(years) {
 	});
 }
 
-d3.csv("data/exercise2-olympics.csv", function(error, csv_data) {
+function show_two_dimension(docid, x_col, stack_col, csv_data) {
   // get all sports
-  var sports = d3.nest()
-    .key(function(d) { return d.Sport; })
+  var stack_categories = d3.nest()
+    .key(function(d) { return d[stack_col]; })
     .rollup(function(v) { return v.length; })
     .map(csv_data);
-  sports = Object.keys(sports);
-  console.log(sports);
-
-  var years = d3.nest()
-    .key(function(d) { return d.Year; })
-    .rollup(function(v) { return v.length; })
-    .map(csv_data);
-  years = Object.keys(years).sort();
-  console.log(years);
-  update_year(years)
+  stack_categories = Object.keys(stack_categories);
+  console.log(stack_categories);
 
   // filter by year
   var data = d3.nest()
-		.key(function(d) { return d.Country;}).sortValues(d3.ascending)
-		.key(function(d) { return d.Sport;}).sortValues(d3.descending)
+		.key(function(d) { return d[x_col];}).sortValues(d3.ascending)
+		.key(function(d) { return d[stack_col];}).sortValues(d3.descending)
 		.rollup(function(v) { 
 			return v.length;
 		}).entries(csv_data);
@@ -134,13 +126,28 @@ d3.csv("data/exercise2-olympics.csv", function(error, csv_data) {
 			.key(function(d){ return d.key; })
 			.rollup(function(v){ return v[0].values; })
 		  .map(d.values);
-    row['Country'] = d.key;
+    row[x_col] = d.key;
     return row; 
   });
   //console.log(JSON.stringify(rows));
 
   //return data;
-  draw_stacked_bar('#barchart-country-sport', sports, rows);
+  draw_stacked_bar(docid, stack_categories, rows);
+}
+
+d3.csv("data/exercise2-olympics.csv", function(error, csv_data) {
+
+  var years = d3.nest()
+    .key(function(d) { return d.Year; })
+    .rollup(function(v) { return v.length; })
+    .map(csv_data);
+  years = Object.keys(years).sort();
+
+  console.log(years);
+  update_year(years);
+
+  show_two_dimension('#barchart-country-sport', 'Country', 'Sport', csv_data);
+  show_two_dimension('#barchart-country-medal', 'Country', 'Medal', csv_data);
 });
 
 </script>
