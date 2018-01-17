@@ -9,6 +9,8 @@
 
     <!--css-->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+
     <link rel="stylesheet" href="css/c3.min.css">
     <link rel="stylesheet" href="css/styles.css" />
 
@@ -28,38 +30,56 @@
           </p>
         </div>
       </div>
+
       <div class="row">
-        <div class="col-md-6">
+        <div class="col-sm-8 col-md-10">
           <div class="row">
             <div class="chart-wrapper col-md-12">
-              <h2> Sport per country</h2>
-              <div class="form-inline">
-                <label for="filter-year-begin">year begin</label>
-                <select id="filter-year-begin" class="form-control"> </select>
-                <label for="filter-year-end">year end</label>
-                <select id="filter-year-end" class="form-control"> </select>
-              </div>
-
-							<div id='barchart-country-sport'></div>
+              <h2>medals per country along years</h2>
+              <div id='line-year-country'></div>
             </div>
-            <div class="chart-wrapper col-md-12">
-              <h2> medals per country</h2>
-							<div id='barchart-country-medal'></div>
+          </div>
+          <div class="row">
+            <div class="col-md-6">
+              <h2> Sport vs country</h2>
+              <div id='barchart-country-sport'></div>
+            </div>
+            <div class="col-md-6">
+              <h2> medals vs country</h2>
+              <div id='barchart-country-medal'></div>
             </div>
           </div>
         </div>
 
-        <div class="col-md-6">
+        <div class="col-sm-4 col-md-2">
           <div class="row">
-          </div>
-          <div class="row">
-            <h2>Heatmap country/year</h2>
+            <h2> filter selection </h2>
+            <form>
+              <div class="form-group">
+                <label for="select-country-count">top country#</label>
+                <select id="select-country-count" class="form-control">
+                  <option>3</option>
+                  <option>5</option>
+                  <option>6</option>
+                  <option>7</option>
+                  <option>8</option>
+                  <option>9</option>
+                  <option>10</option>
+                  <option>15</option>
+                  <option>20</option>
+                </select>
+              </div>
+
+							<label>year range <strong id='year-begin'>1924</strong> ~ <strong id='year-end'>2006</strong></label>
+              <div id="slider-year"></div>
+            </form>
           </div>
         </div>
       </div>
     </div>
 
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
     <script src="https://d3js.org/d3.v3.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.map"></script>
@@ -74,8 +94,6 @@
 <script>
 
 function draw_stacked_bar(docid, columns, jsondata) {
-  console.log(JSON.stringify(jsondata));
-  console.log(jsondata.length);
 	var chart = c3.generate({
 			bindto: docid,
 			data: {
@@ -95,23 +113,11 @@ function draw_stacked_bar(docid, columns, jsondata) {
 	});
 }
 
-function update_year(years) {
-	years.forEach( function(value, index) {
-		$('#filter-year-begin').append($("<option></option>").text(value)); 
-		$('#filter-year-end').append($("<option></option>").text(value)); 
-	});
-}
+function show_two_dimension(docid, years, categories, x_col, stack_col, csv_data) {
+  var csv_data = csv_data.filter(function(r){
+    return r.Year >= years[0] && r.Year<=years[1];
+  });
 
-function show_two_dimension(docid, x_col, stack_col, csv_data) {
-  // get all sports
-  var stack_categories = d3.nest()
-    .key(function(d) { return d[stack_col]; })
-    .rollup(function(v) { return v.length; })
-    .map(csv_data);
-  stack_categories = Object.keys(stack_categories);
-  console.log(stack_categories);
-
-  // filter by year
   var data = d3.nest()
 		.key(function(d) { return d[x_col];}).sortValues(d3.ascending)
 		.key(function(d) { return d[stack_col];}).sortValues(d3.descending)
@@ -119,35 +125,122 @@ function show_two_dimension(docid, x_col, stack_col, csv_data) {
 			return v.length;
 		}).entries(csv_data);
 
-  //console.log(data);
-  
+  var top_country_num = $('#select-country-count').val();
+  top_countries = countries.slice(0, top_country_num);
   rows = data.map(function(d) {
 	  var row = d3.nest()
 			.key(function(d){ return d.key; })
 			.rollup(function(v){ return v[0].values; })
 		  .map(d.values);
+    row['total'] = Object.values(row).reduce((a, b) => a + b);
     row[x_col] = d.key;
     return row; 
+  }).filter(function(r){
+    return top_countries.includes(r.Country);
   });
-  //console.log(JSON.stringify(rows));
+  rows.sort(function(a,b){ return b['total'] - a['total']; });
 
-  //return data;
-  draw_stacked_bar(docid, stack_categories, rows);
+  draw_stacked_bar(docid, categories, rows);
 }
 
-d3.csv("data/exercise2-olympics.csv", function(error, csv_data) {
-
-  var years = d3.nest()
-    .key(function(d) { return d.Year; })
+function get_column(csv_data, column) {
+  var column_count = d3.nest()
+    .key(function(d) { return d[column]; })
     .rollup(function(v) { return v.length; })
     .map(csv_data);
-  years = Object.keys(years).sort();
 
-  console.log(years);
-  update_year(years);
+  var items = Object.keys(column_count);
+  items.sort(function(key1, key2) {
+    return column_count[key2] - column_count[key1];
+  });
 
-  show_two_dimension('#barchart-country-sport', 'Country', 'Sport', csv_data);
-  show_two_dimension('#barchart-country-medal', 'Country', 'Medal', csv_data);
+  return items;
+}
+function draw_line_chart(docid, countries, jsondata) {
+  var top_country_num = $('#select-country-count').val();
+	var chart = c3.generate({
+			bindto: docid,
+			data: {
+        x: 'Year',
+				json: jsondata,
+				type: 'line',
+        keys: {
+          x: 'Year',
+					value: countries.slice(0,top_country_num),
+        },
+			},
+			axis: {
+					x: {
+							type: 'category',
+					}
+			}
+	});
+}
+
+
+function show_yearly_trend(docid, years, sports, countries, csv_data) {
+  csv_data = csv_data.filter(function(r){
+    return r.Year >= years[0] && r.Year<=years[1];
+  });
+  var data = d3.nest()
+		.key(function(d) { return d.Year;}).sortValues(d3.ascending)
+		.key(function(d) { return d.Country;}).sortValues(d3.descending)
+		.rollup(function(v) { 
+			return v.length;
+		}).entries(csv_data);
+
+  rows = data.map(function(d) {
+	  var row = d3.nest()
+			.key(function(d){ return d.key; })
+			.rollup(function(v){ return v[0].values; })
+		  .map(d.values);
+    row['Year'] = d.key;
+    return row; 
+  });
+  draw_line_chart(docid, countries, rows);
+}
+
+var csv_data;
+var years, sports, countries;
+var year_range = [1924, 2006];
+var medals = ['Gold', 'Silver', 'Bronze'];
+d3.csv("data/exercise2-olympics.csv", function(error, data) {
+  csv_data = data;
+  years = get_column(csv_data, 'Year');
+  sports = get_column(csv_data, 'Sport');
+  countries = get_column(csv_data, 'Country');
+  year_range = [years[years.length-1], years[0]];
+
+  show_yearly_trend('#line-year-country', year_range, sports, countries, csv_data);
+  show_two_dimension('#barchart-country-sport', year_range, sports, 'Country', 'Sport', csv_data);
+  show_two_dimension('#barchart-country-medal', year_range, medals, 'Country', 'Medal', csv_data);
+});
+
+function update_charts(){
+  show_yearly_trend('#line-year-country', year_range, sports, countries, csv_data);
+  show_two_dimension('#barchart-country-sport', year_range, sports, 'Country', 'Sport', csv_data);
+  show_two_dimension('#barchart-country-medal', year_range, medals, 'Country', 'Medal', csv_data);
+}
+// events
+var slider_year = $("#slider-year").slider({
+	values:[1924,2006],
+	min: 1924,
+	max: 2006,
+	step: 4,
+	slide: function( event, ui ) {
+    year_range = ui.values;
+	  $('#year-begin').text(year_range[0]);
+	  $('#year-end').text(year_range[1]);
+		update_charts();
+	}
+});
+
+$("#select-country-count" ).change(function() {
+  update_charts();
+});
+
+$("#filter-country-count" ).change(function() {
+  update_charts();
 });
 
 </script>
