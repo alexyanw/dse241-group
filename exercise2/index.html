@@ -71,7 +71,9 @@
               </div>
 
 							<label>year range <strong id='year-begin'>1924</strong> ~ <strong id='year-end'>2006</strong></label>
-              <div id="slider-year"></div>
+              <div id="slider-year"></div><br>
+							<input id='year-play' class="btn btn-primary" type="button" value="play">
+							<input id='year-reset' class="btn btn-primary" type="button" value="reset">
             </form>
           </div>
         </div>
@@ -85,142 +87,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.map"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.15.0/moment.min.js"></script>
     <script src="js/c3.min.js"></script>
-<!--
-    <script src="js/scripts.js"></script>
--->
+    <script src="js/olympics.js"></script>
 
   </body>
 
 <script>
 
-function draw_stacked_bar(docid, columns, jsondata) {
-	var chart = c3.generate({
-			bindto: docid,
-			data: {
-				json: jsondata,
-				type: 'bar',
-				keys: {
-					x: 'Country',
-					value: columns
-				},
-        groups: [columns ]
-			},
-			axis: {
-					x: {
-							type: 'category',
-					}
-			}
-	});
-}
-
-function show_two_dimension(docid, years, categories, x_col, stack_col, csv_data) {
-  var csv_data = csv_data.filter(function(r){
-    return r.Year >= years[0] && r.Year<=years[1];
-  });
-
-  var data = d3.nest()
-		.key(function(d) { return d[x_col];}).sortValues(d3.ascending)
-		.key(function(d) { return d[stack_col];}).sortValues(d3.descending)
-		.rollup(function(v) { 
-			return v.length;
-		}).entries(csv_data);
-
-  var top_country_num = $('#select-country-count').val();
-  top_countries = countries.slice(0, top_country_num);
-  rows = data.map(function(d) {
-	  var row = d3.nest()
-			.key(function(d){ return d.key; })
-			.rollup(function(v){ return v[0].values; })
-		  .map(d.values);
-    row['total'] = Object.values(row).reduce((a, b) => a + b);
-    row[x_col] = d.key;
-    return row; 
-  }).filter(function(r){
-    return top_countries.includes(r.Country);
-  });
-  rows.sort(function(a,b){ return b['total'] - a['total']; });
-
-  draw_stacked_bar(docid, categories, rows);
-}
-
-function get_column(csv_data, column) {
-  var column_count = d3.nest()
-    .key(function(d) { return d[column]; })
-    .rollup(function(v) { return v.length; })
-    .map(csv_data);
-
-  var items = Object.keys(column_count);
-  items.sort(function(key1, key2) {
-    return column_count[key2] - column_count[key1];
-  });
-
-  return items;
-}
-function draw_line_chart(docid, countries, jsondata) {
-  var top_country_num = $('#select-country-count').val();
-	var chart = c3.generate({
-			bindto: docid,
-			data: {
-        x: 'Year',
-				json: jsondata,
-				type: 'line',
-        keys: {
-          x: 'Year',
-					value: countries.slice(0,top_country_num),
-        },
-			},
-			axis: {
-					x: {
-							type: 'category',
-					}
-			}
-	});
-}
-
-
-function show_yearly_trend(docid, years, sports, countries, csv_data) {
-  csv_data = csv_data.filter(function(r){
-    return r.Year >= years[0] && r.Year<=years[1];
-  });
-  var data = d3.nest()
-		.key(function(d) { return d.Year;}).sortValues(d3.ascending)
-		.key(function(d) { return d.Country;}).sortValues(d3.descending)
-		.rollup(function(v) { 
-			return v.length;
-		}).entries(csv_data);
-
-  rows = data.map(function(d) {
-	  var row = d3.nest()
-			.key(function(d){ return d.key; })
-			.rollup(function(v){ return v[0].values; })
-		  .map(d.values);
-    row['Year'] = d.key;
-    return row; 
-  });
-  draw_line_chart(docid, countries, rows);
-}
-
-var csv_data;
-var years, sports, countries;
-var year_range = [1924, 2006];
-var medals = ['Gold', 'Silver', 'Bronze'];
-d3.csv("data/exercise2-olympics.csv", function(error, data) {
-  csv_data = data;
-  years = get_column(csv_data, 'Year');
-  sports = get_column(csv_data, 'Sport');
-  countries = get_column(csv_data, 'Country');
-  year_range = [years[years.length-1], years[0]];
-
-  show_yearly_trend('#line-year-country', year_range, sports, countries, csv_data);
-  show_two_dimension('#barchart-country-sport', year_range, sports, 'Country', 'Sport', csv_data);
-  show_two_dimension('#barchart-country-medal', year_range, medals, 'Country', 'Medal', csv_data);
-});
-
-function update_charts(){
-  show_yearly_trend('#line-year-country', year_range, sports, countries, csv_data);
-  show_two_dimension('#barchart-country-sport', year_range, sports, 'Country', 'Sport', csv_data);
-  show_two_dimension('#barchart-country-medal', year_range, medals, 'Country', 'Medal', csv_data);
-}
 // events
 var slider_year = $("#slider-year").slider({
 	values:[1924,2006],
@@ -243,5 +115,27 @@ $("#filter-country-count" ).change(function() {
   update_charts();
 });
 
+var play_obj;
+$("#year-play" ).click(function() {
+  var index = 1;
+  play_obj = setInterval(function(){ 
+    if(index == years.length-1) {
+			clearInterval(play_obj);
+		} else {
+			y = years[years.length -1 - index];
+      play(y);
+			index += 1; 
+		}
+  }, 1000);
+});
+
+$("#year-reset" ).click(function() {
+	clearInterval(play_obj);
+  play(1924);
+});
+
+$( window ).resize(function() {
+  update_charts();
+});
 </script>
 </html>
