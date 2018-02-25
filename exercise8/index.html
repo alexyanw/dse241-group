@@ -24,6 +24,7 @@
 
     <link rel="stylesheet" href="/css/map.css">
 
+    <script src="https://d3js.org/d3.v3.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
     <script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.9/jquery-ui.min.js" type="text/javascript"></script>
 
@@ -62,7 +63,15 @@
 
 				<div class='col-sm-6 col-md-4'>
 					<div>
-						<h2>filter</h2>
+						<h2>Control</h2>
+						<div class="form-group">
+							<label>speed: <strong id='speed'>1</strong>x</label>
+							<div id="slider-speed"></div><br>
+							<label>time range: <strong id='time-begin'>2006</strong> ~ <strong id='time-end'>2014</strong>  current time:<strong id='time-at'>2006</strong></label>
+							<div id="slider-time"></div><br>
+							<input id='time-play' class="btn btn-primary" type="button" value="play">
+							<input id='time-pause' class="btn btn-primary" type="button" value="pause">
+						</div>
 					</div>
 					<div>
 						<h2>statitics</h2>
@@ -114,10 +123,6 @@ let baseLayers = {
 
 var controlLayers = L.control.layers(baseLayers).addTo(map);
 
-var ca_boundary = new L.geoJson();
-ca_boundary.addTo(map);
-controlLayers.addOverlay(ca_boundary, 'California boundary');
-
 function style(feature) {
     return {
         //fillColor: getColor(feature.properties.density),
@@ -133,30 +138,44 @@ function onEachFeature(feature, layer) {
 		layer._leaflet_id = feature.id; 
     layer.on({
         mouseover: highlightFeature,
-        mouseout: resetHighlight,
+        //mouseout: resetHighlight,
     });
 }
 
 var county_boundary = new L.geoJson(null, {
-															onEachFeature: onEachFeature
+                            onEachFeature: onEachFeature
 														});
 county_boundary.addTo(map);
 controlLayers.addOverlay(county_boundary, 'county boundary');
 
-$.ajax({
-	dataType: "json",
-	url: "data/california.geojson",
-	success: function(data) {
-			ca_boundary.addData(data);
-	}
-}).error(function() {});
+// load virus status data
+var virus_data, timeslices, colormap;
+function get_data_at_time(data, year_week) {
+  return data.filter(function(r) {return (r.Year==year_week[0] && r.Week_Reported == year_week[1]); });
+}
 
+var time_begin, time_end;
+d3.json("data/West_Nile_Virus_by_County.json", function(error, data) {
+  virus_data = data;
+  timeslices = d3.map(virus_data, function(r) {return [r.Year, r.Week_Reported];}).keys().sort();
+  positive_cases = virus_data.map(function(r) { return r.Positive_Cases; } );
+  time_begin = d3.min(positive_cases); 
+  time_end = d3.max(positive_cases);
+  colormap = d3.scale.linear().domain([time_begin, time_end]).range(["yellow", "red"]);
+
+  
+  instance_timeslider();
+});
+
+// loading california county geo boundary
+var all_counties;
 var county_ids = {};
 $.ajax({
 	dataType: "json",
 	url: "data/jsoncounties-CA.min.geojson",
 	success: function(data) {
       all = data['features']['counties'];
+			all_counties = all;
       for(var i in all) {
         var county = all[i];
         //HACK: fix the format issue in data
@@ -175,7 +194,92 @@ $.ajax({
 	}
 }).error(function() {});
 
+function set_county_color(county, color) {
+  var id = county_ids[county];
+  county_boundary.getLayer(id).setStyle({
+				fillColor: color,
+        weight: 2,
+        opacity: 1,
+        color: 'white',
+        dashArray: '3',
+        fillOpacity: 0.7
+	});
+}
+
+function fill_color_at_time(str_year_week) {
+  year_week = str_year_week.split(',');
+  county_virus = get_data_at_time(virus_data, year_week);
+  console.log(virus_data, county_virus);
+  county_virus.map(function(r) {
+    set_county_color(r.County, colormap(r.Positive_Cases));
+	});
+}
+
 let sidebar = L.control.sidebar('sidebar').addTo(map);
+
+function play(ti) {
+	console.log('playing at time: ' + timeslices[ti]);
+  slider_time.slider("value", ti);
+	$('#time-at').text(timeslices[ti]);
+  //update color
+  fill_color_at_time(timeslices[ti]);
+}
+
+
+// events
+var slider_speed = $("#slider-speed").slider({
+	value: 3,
+	min: 1,
+	max: 10,
+	slide: function( event, ui ) {
+		idx = ui.value;
+		$('#speed').text(idx);
+		//update_charts();
+	},
+});
+
+
+function instance_timeslider() {
+	$('#time-begin').text(timeslices[0]);
+	$('#time-at').text(timeslices[0]);
+	$('#time-end').text(timeslices[timeslices.length-1]);
+  slider_time = $("#slider-time").slider({
+    range: 'min',
+		value:0,
+		min: 0,
+		max: timeslices.length-1,
+		slide: function( event, ui ) {
+			idx = ui.value;
+			$('#time-at').text(timeslices[idx]);
+			//update_charts();
+		},
+		change: function( event, ui ) {
+			idx = ui.value;
+			$('#time-at').text(timeslices[idx]);
+			//update_charts();
+		}
+
+
+	});
+}
+
+var play_obj;
+$("#time-play" ).click(function() {
+  var index = $("#slider-time").slider('value');
+  var speed = $("#slider-speed").slider('value');
+  play_obj = setInterval(function(){ 
+    if(index == timeslices.length-1) {
+			clearInterval(play_obj);
+		} else {
+      play(index);
+			index += 1; 
+		}
+  }, 1000/speed);
+});
+
+$("#time-pause" ).click(function() {
+	clearInterval(play_obj);
+});
 
 </script>
 </html>
