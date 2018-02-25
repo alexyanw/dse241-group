@@ -7,7 +7,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-    <link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.9/themes/base/jquery-ui.css" type="text/css" media="all" />
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.0/themes/smoothness/jquery-ui.css" type="text/css" media="all" />
     <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
     <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap-theme.min.css">
     <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
@@ -25,8 +25,8 @@
     <link rel="stylesheet" href="/css/map.css">
 
     <script src="https://d3js.org/d3.v3.min.js"></script>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
-    <script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.9/jquery-ui.min.js" type="text/javascript"></script>
+    <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.0/jquery-ui.min.js" type="text/javascript"></script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.12.2/d3.min.js" charset="utf-8"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/c3/0.4.18/c3.min.js"></script>
@@ -74,7 +74,9 @@
 						</div>
 					</div>
 					<div>
-						<h2>statitics</h2>
+						<h2>Statitics</h2>
+            <div id='barchart-county-cases'></div>
+            <div id='barchart-cumulated-county-cases'></div>
 					</div>
 				</div>
 			</div>
@@ -134,11 +136,57 @@ function style(feature) {
     };
 }
 
+function highlightFeature(e) {
+		county = e.target.feature.name;
+    var layer = e.target;
+    layer.setStyle({
+        weight: 5,
+        color: '#666',
+        dashArray: '',
+        fillOpacity: 0.7
+    });
+
+    if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+        layer.bringToFront();
+    }
+    
+		highlight_county(county);
+}
+
+var highlighted = false;
+function highlight_county(county) {
+    if(highlighted) { return; }
+
+    highlighted = true;
+		bc_idx = barchart_current.categories().indexOf(county);
+		if(bc_idx != -1) {
+			barchart_current.tooltip.show({index: bc_idx});
+    }
+		bcc_idx = barchart_cumulated.categories().indexOf(county);
+		if(bcc_idx != -1) {
+			barchart_cumulated.tooltip.show({index: bcc_idx});
+    }
+    console.log("hhhhh", bc_idx, bcc_idx, county);
+}
+
+
+function resetHighlight(e) {
+    county_boundary.resetStyle(e.target);
+    var county = e.target.feature.name;
+    var time_at = $("#slider-time").slider('value');
+    var year_week = timeslices[time_at].split(',');
+    set_county_color_at(county, year_week);
+
+		barchart_current.tooltip.hide();
+		barchart_cumulated.tooltip.hide();
+    highlighted = false;
+}
+
 function onEachFeature(feature, layer) {
 		layer._leaflet_id = feature.id; 
     layer.on({
         mouseover: highlightFeature,
-        //mouseout: resetHighlight,
+        mouseout: resetHighlight,
     });
 }
 
@@ -154,6 +202,27 @@ function get_data_at_time(data, year_week) {
   return data.filter(function(r) {return (r.Year==year_week[0] && r.Week_Reported == year_week[1]); });
 }
 
+function get_cumulated_data_at_time(data, year_week) {
+  var filtered_data = data.filter(function(r) {
+		if(r.Year > year_week[0]){ return false; }
+    else if(r.Year == year_week[0] && r.Week_Reported > year_week[1]) { return false; }
+    else { return true; }
+	});
+	var grouped_data = d3.nest()
+		.key(function(d) { return d.County; })
+		.rollup(function(v) { return {
+			count: v.length,
+			cumulated_cases: d3.sum(v, function(d) { return d.Positive_Cases; }),
+		  }; })
+		.entries(filtered_data);
+
+  rows = grouped_data.map(function(d) {
+	  return { County: d.key, cumulated_cases: d.values['cumulated_cases'] };
+  });
+
+  return rows;
+}
+
 var time_begin, time_end;
 d3.json("data/West_Nile_Virus_by_County.json", function(error, data) {
   virus_data = data;
@@ -162,7 +231,6 @@ d3.json("data/West_Nile_Virus_by_County.json", function(error, data) {
   time_begin = d3.min(positive_cases); 
   time_end = d3.max(positive_cases);
   colormap = d3.scale.linear().domain([time_begin, time_end]).range(["yellow", "red"]);
-
   
   instance_timeslider();
 });
@@ -191,12 +259,18 @@ $.ajax({
 				}
 				county_boundary.addData(county);
 			}
+			update_viz_at_time(timeslices[0]);
 	}
 }).error(function() {});
 
 function set_county_color(county, color) {
   var id = county_ids[county];
-  county_boundary.getLayer(id).setStyle({
+  var layer = county_boundary.getLayer(id)
+  if(color == null) {
+    county_boundary.resetStyle(layer);
+    return;
+  }
+  layer.setStyle({
 				fillColor: color,
         weight: 2,
         opacity: 1,
@@ -206,38 +280,77 @@ function set_county_color(county, color) {
 	});
 }
 
-function fill_color_at_time(str_year_week) {
+function set_county_color_at(county, year_week) {
+  current_cases = virus_data.filter(function(r) {
+    return (r.Year==year_week[0] && 
+        r.Week_Reported == year_week[1] && 
+        r.County == county); 
+  });
+  county_status = current_cases[0];
+  if(county_status == null) {
+    set_county_color(county, null);
+  }else{
+    set_county_color(county, colormap(county_status.Positive_Cases));
+  }
+}
+
+var barchart_current, barchart_cumulated;
+function update_viz_at_time(str_year_week) {
+  year_week = str_year_week.split(',');
+  // update map
+  all_counties.map(function(r) {
+    set_county_color_at(r.name, year_week);
+  });
+
+  // update bar chart
+  county_cases = get_data_at_time(virus_data, year_week);
+  barchart_current = draw_bar('#barchart-county-cases', 'Positive Cases at ' + str_year_week, 'Positive_Cases', county_cases);
+  cumulated_cases = get_cumulated_data_at_time(virus_data, year_week);
+  barchart_cumulated = draw_bar('#barchart-cumulated-county-cases', 'Cumulated Positive Cases at ' + str_year_week, 'cumulated_cases', cumulated_cases, 10);
+}
+
+function update_viz_at_time1(str_year_week) {
   year_week = str_year_week.split(',');
   county_virus = get_data_at_time(virus_data, year_week);
-  console.log(virus_data, county_virus);
   county_virus.map(function(r) {
     set_county_color(r.County, colormap(r.Positive_Cases));
 	});
 }
 
-let sidebar = L.control.sidebar('sidebar').addTo(map);
-
-function play(ti) {
-	console.log('playing at time: ' + timeslices[ti]);
-  slider_time.slider("value", ti);
-	$('#time-at').text(timeslices[ti]);
-  //update color
-  fill_color_at_time(timeslices[ti]);
+var play_obj;
+function start_play(speed) {
+  var ti = $("#slider-time").slider('value');
+  return setInterval(function(){ 
+    if(ti == timeslices.length-1) {
+			clearInterval(play_obj);
+		} else {
+			console.log('playing at time: ' + timeslices[ti] + ' with speed ' + speed);
+			slider_time.slider("value", ti);
+			ti += 1; 
+		}
+  }, 1000/speed);
 }
 
+$("#time-play" ).click(function() {
+  var speed = $("#slider-speed").slider('value');
+  play_obj = start_play(speed);
+});
 
-// events
+$("#time-pause" ).click(function() {
+	clearInterval(play_obj);
+});
+
 var slider_speed = $("#slider-speed").slider({
 	value: 3,
 	min: 1,
 	max: 10,
 	slide: function( event, ui ) {
-		idx = ui.value;
-		$('#speed').text(idx);
-		//update_charts();
+		speed = ui.value;
+		$('#speed').text(speed);
+	  clearInterval(play_obj);
+		play_obj = start_play(speed);
 	},
 });
-
 
 function instance_timeslider() {
 	$('#time-begin').text(timeslices[0]);
@@ -251,35 +364,53 @@ function instance_timeslider() {
 		slide: function( event, ui ) {
 			idx = ui.value;
 			$('#time-at').text(timeslices[idx]);
-			//update_charts();
+			update_viz_at_time(timeslices[idx]);
 		},
 		change: function( event, ui ) {
 			idx = ui.value;
 			$('#time-at').text(timeslices[idx]);
-			//update_charts();
+			update_viz_at_time(timeslices[idx]);
 		}
-
-
 	});
 }
 
-var play_obj;
-$("#time-play" ).click(function() {
-  var index = $("#slider-time").slider('value');
-  var speed = $("#slider-speed").slider('value');
-  play_obj = setInterval(function(){ 
-    if(index == timeslices.length-1) {
-			clearInterval(play_obj);
-		} else {
-      play(index);
-			index += 1; 
-		}
-  }, 1000/speed);
-});
-
-$("#time-pause" ).click(function() {
-	clearInterval(play_obj);
-});
+function draw_bar(docid, title, column, jsondata, top=null) {
+  jsondata = jsondata.sort(function(x, y) { return d3.descending(x[column], y[column]); })
+  if(top != null) {
+    jsondata = jsondata.slice(0, top);
+	}
+  var chart = c3.generate({
+      bindto: docid,
+      title: { text: title },
+      data: {
+        json: jsondata,
+        type: 'bar',
+        keys: {
+            x: 'County',
+            value: [column, 'County'],
+        },
+        color: function (color, d) {
+          return colormap(d.value);
+        },
+/*
+				onmouseover: function (d) {
+          highlight_county(this.categories()[d.index]);
+        },
+				onmouseout: function (d) {
+					barchart_current.tooltip.hide();
+					barchart_cumulated.tooltip.hide();
+        },
+*/
+      },
+      legend: {show: false},
+      axis: {
+          x: {
+              type: 'category',
+          }
+      }
+  });
+  return chart;
+}
 
 </script>
 </html>
