@@ -11,24 +11,14 @@
     <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
     <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap-theme.min.css">
     <link href="http://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
-
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/leaflet.css"/>
-<!--
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.3.1/MarkerCluster.css"/>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.3.1/MarkerCluster.Default.css"/>
--->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/c3/0.4.18/c3.min.css" type="text/css">
-
-    <link rel="stylesheet" href="/assets/leaflet-sidebar-v2/leaflet-sidebar.css"/>
-    <link rel="stylesheet" href="/assets/leaflet_vector_markers/leaflet-vector-markers.css">
 
     <link rel="stylesheet" href="/css/map.css">
 
     <script src="https://d3js.org/d3.v3.min.js"></script>
     <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.0/jquery-ui.min.js" type="text/javascript"></script>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.12.2/d3.min.js" charset="utf-8"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/c3/0.4.18/c3.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-1.2.0.min.js"></script>
 
@@ -44,9 +34,9 @@
             </div>
             <div class="col-md-4 header">
               <p class='extra-space' >Group 
-              <a class='extra-space' href="mailto:s9ahmad@eng.ucsd.edu">Salah Ahmad</a>
               <a class='extra-space'  href="mailto:w9yan@eng.ucsd.edu">Wen Yan</a>
               <a class='extra-space'  href="mailto:m3wang@eng.ucsd.edu">Mengting Wang</a>
+              <a class='extra-space' href="mailto:s9ahmad@eng.ucsd.edu">Salah Ahmad</a>
               </p>
             </div>
           </div><!-- /.row -->
@@ -65,7 +55,7 @@
 					<div>
 						<h2>Control</h2>
 						<div class="form-group">
-							<label>speed: <strong id='speed'>1</strong>x</label>
+							<label>speed: <strong id='speed'>3</strong>x</label>
 							<div id="slider-speed"></div><br>
 							<label>time range: <strong id='time-begin'>2006</strong> ~ <strong id='time-end'>2014</strong>  current time:<strong id='time-at'>2006</strong></label>
 							<div id="slider-time"></div><br>
@@ -85,17 +75,11 @@
 </body>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/leaflet.js"></script>
-<!--
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.3.1/leaflet.markercluster-src.js"></script>
--->
 <script src='https://api.mapbox.com/mapbox.js/v3.1.1/mapbox.js'></script>
-<script src="/assets/leaflet-sidebar-v2/leaflet-sidebar.min.js"></script>
-<script src="/assets/leaflet_vector_markers/leaflet-vector-markers.js"></script>
 <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
 <script>
 
 //define a boundary box around CA to limit the map to
-//let bounds = new L.LatLngBounds(new L.LatLng(33.627056, -117.943720), new L.LatLng(32.226014, -116.5608));
 let bounds = new L.LatLngBounds(new L.LatLng(42.245210, -127.278267), new L.LatLng(32.342943, -110.486167));
 
 //create layers
@@ -137,7 +121,10 @@ function style(feature) {
 }
 
 function highlightFeature(e) {
-		county = e.target.feature.name;
+    layer = e.target
+		county = layer.feature.name;
+    info_control.update(layer.feature.properties);
+
     var layer = e.target;
     layer.setStyle({
         weight: 5,
@@ -166,11 +153,11 @@ function highlight_county(county) {
 		if(bcc_idx != -1) {
 			barchart_cumulated.tooltip.show({index: bcc_idx});
     }
-    console.log("hhhhh", bc_idx, bcc_idx, county);
 }
 
 
 function resetHighlight(e) {
+    info_control.update();
     county_boundary.resetStyle(e.target);
     var county = e.target.feature.name;
     var time_at = $("#slider-time").slider('value');
@@ -190,11 +177,42 @@ function onEachFeature(feature, layer) {
     });
 }
 
+// add county boundary layer
 var county_boundary = new L.geoJson(null, {
                             onEachFeature: onEachFeature
 														});
 county_boundary.addTo(map);
 controlLayers.addOverlay(county_boundary, 'county boundary');
+
+// add info control
+var info_control = L.control();
+info_control.onAdd = function (map) {
+  this._div = L.DomUtil.create('div', 'info'); // create a div with a class "info"
+  this.update();
+  return this._div;
+};
+
+// method that we will use to update the control based on feature properties passed
+info_control.update = function (props) {
+  var div = '<h4>County Positive Cases </h4>';
+  if(!props) {
+		div += 'Hover over a county';
+	}else{
+		var county = props.name;
+		//console.log(county_stats);
+    var total_cases = 0;
+    var report_count = 0;
+    div += '<b>' + county + '</b><br/>';
+    if(county in county_stats) {
+      total_cases = county_stats[county]['total_positive_cases'];
+      report_count = county_stats[county]['report_count'] 
+		}
+		div += 'total positive cases: ' + total_cases + "<br/>";
+		div += 'total report count: ' + report_count + "<br/>";
+	}
+  this._div.innerHTML = div;
+};
+info_control.addTo(map);
 
 // load virus status data
 var virus_data, timeslices, colormap;
@@ -211,19 +229,20 @@ function get_cumulated_data_at_time(data, year_week) {
 	var grouped_data = d3.nest()
 		.key(function(d) { return d.County; })
 		.rollup(function(v) { return {
-			count: v.length,
 			cumulated_cases: d3.sum(v, function(d) { return d.Positive_Cases; }),
+			report_count: v.length,
 		  }; })
 		.entries(filtered_data);
 
   rows = grouped_data.map(function(d) {
-	  return { County: d.key, cumulated_cases: d.values['cumulated_cases'] };
+	  return { County: d.key, cumulated_cases: d.values['cumulated_cases'], report_count: d.values['report_count'] };
   });
 
   return rows;
 }
 
 var time_begin, time_end;
+var county_stats = {};
 d3.json("data/West_Nile_Virus_by_County.json", function(error, data) {
   virus_data = data;
   timeslices = d3.map(virus_data, function(r) {return [r.Year, r.Week_Reported];}).keys().sort();
@@ -233,6 +252,17 @@ d3.json("data/West_Nile_Virus_by_County.json", function(error, data) {
   colormap = d3.scale.linear().domain([time_begin, time_end]).range(["yellow", "red"]);
   
   instance_timeslider();
+	grouped_data = d3.nest()
+		.key(function(d) { return d.County; })
+		.rollup(function(v) { return {
+			total_positive_cases: d3.sum(v, function(d) { return d.Positive_Cases; }),
+			report_count: v.length,
+		  }; })
+		.entries(virus_data);
+
+  grouped_data.map(function(d) {
+		county_stats[d.key] = {total_positive_cases: d.values['total_positive_cases'], report_count: d.values['report_count'] };
+  });
 });
 
 // loading california county geo boundary
@@ -294,6 +324,7 @@ function set_county_color_at(county, year_week) {
   }
 }
 
+var county_cases, cumulated_cases;
 var barchart_current, barchart_cumulated;
 function update_viz_at_time(str_year_week) {
   year_week = str_year_week.split(',');
@@ -304,9 +335,9 @@ function update_viz_at_time(str_year_week) {
 
   // update bar chart
   county_cases = get_data_at_time(virus_data, year_week);
-  barchart_current = draw_bar('#barchart-county-cases', 'Positive Cases at ' + str_year_week, 'Positive_Cases', county_cases);
+  barchart_current = draw_bar('#barchart-county-cases', 'Positive Cases reported at ' + str_year_week, ['Positive_Cases'], county_cases);
   cumulated_cases = get_cumulated_data_at_time(virus_data, year_week);
-  barchart_cumulated = draw_bar('#barchart-cumulated-county-cases', 'Cumulated Positive Cases at ' + str_year_week, 'cumulated_cases', cumulated_cases, 10);
+  barchart_cumulated = draw_bar('#barchart-cumulated-county-cases', 'Cumulated Positive Cases until ' + str_year_week, ['cumulated_cases', 'report_count'], cumulated_cases, 10);
 }
 
 function update_viz_at_time1(str_year_week) {
@@ -338,6 +369,7 @@ $("#time-play" ).click(function() {
 
 $("#time-pause" ).click(function() {
 	clearInterval(play_obj);
+  play_obj = null;
 });
 
 var slider_speed = $("#slider-speed").slider({
@@ -347,8 +379,10 @@ var slider_speed = $("#slider-speed").slider({
 	slide: function( event, ui ) {
 		speed = ui.value;
 		$('#speed').text(speed);
-	  clearInterval(play_obj);
-		play_obj = start_play(speed);
+    if(play_obj != null) {
+      clearInterval(play_obj);
+      play_obj = start_play(speed);
+    }
 	},
 });
 
@@ -374,8 +408,8 @@ function instance_timeslider() {
 	});
 }
 
-function draw_bar(docid, title, column, jsondata, top=null) {
-  jsondata = jsondata.sort(function(x, y) { return d3.descending(x[column], y[column]); })
+function draw_bar(docid, title, columns, jsondata, top=null) {
+  jsondata = jsondata.sort(function(x, y) { return d3.descending(x[columns[0]], y[columns[0]]); })
   if(top != null) {
     jsondata = jsondata.slice(0, top);
 	}
@@ -387,10 +421,14 @@ function draw_bar(docid, title, column, jsondata, top=null) {
         type: 'bar',
         keys: {
             x: 'County',
-            value: [column, 'County'],
+            value: columns,
         },
         color: function (color, d) {
-          return colormap(d.value);
+          if(columns.length > 1) {
+            return color;
+          }else{
+            return colormap(d.value);
+          }
         },
 /*
 				onmouseover: function (d) {
@@ -402,7 +440,7 @@ function draw_bar(docid, title, column, jsondata, top=null) {
         },
 */
       },
-      legend: {show: false},
+      legend: {show: (columns.length > 1)},
       axis: {
           x: {
               type: 'category',
